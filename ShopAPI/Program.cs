@@ -16,7 +16,7 @@ namespace ShopAPI
         {
             //SQL.MakeConnection();
             WikiAPI wa = new WikiAPI();
-            wa.shortText();
+            wa.GetManufacturers();
         }
     }
 }

@@ -10,6 +10,19 @@ using Newtonsoft.Json;
 
 namespace ShopAPI
 {
+    public class Manufacturer
+    {
+        //public string name { get; set; }
+        public string wikiLink { get; set; }
+        public string website { get; set; }
+
+        //public Manufacturer(string wikiLink, string webStite)
+        //{
+        //    this.wikiLink = wikiLink;
+        //    this.website = website;
+        //}
+    }
+
     public class pageval
     {
         public int pageid { get; set; }
@@ -56,16 +69,15 @@ namespace ShopAPI
 
     class WikiAPI
     {
-        public void shortText()
+        public Dictionary<string, Manufacturer> manufacturers = new Dictionary<string, Manufacturer>();
+
+        public void GetManufacturers()
         {
             using (WebClient wc = new WebClient())
             {
-                var client = new WebClient();
-                var response = client.DownloadString("https://en.wikipedia.org/w/api.php?format=json&action=query&prop=revisions&titles=List_of_computer_hardware_manufacturers&rvslots=*&rvprop=content&formatversion=2");
-
-                var responseJson = JsonConvert.DeserializeObject<RootObject>(response);
-                Console.WriteLine("Result:");
-                List<string> manufacturers = new List<string>();
+                Console.WriteLine("Getting manufacturers list...");
+                RootObject responseJson = GetWikiPage("https://en.wikipedia.org/w/api.php?format=json&action=query&prop=revisions&titles=List_of_computer_hardware_manufacturers&rvslots=*&rvprop=content&formatversion=2");
+                List<string> manufacturerList = new List<string>();
                 string[] lines = responseJson.query.pages[0].revisions[0].slots.main.content.Split("\n");
                 string str;
                 foreach (string s in lines)
@@ -80,31 +92,56 @@ namespace ShopAPI
                         if (str.Contains('"')) str = str.Substring(0, str.IndexOf('"'));                                                        // Idézőjelbe tett megjegyzéseket sem kérjük
                         if (str.Contains('{')) str = str.Substring(0, str.IndexOf('{'));                                                        // Van még csapda?
                         if (str.Contains(',')) str = str.Substring(0, str.IndexOf(','));                                                        // Ez most valami vicc!
-                        //if (str.Contains('.')) str = str.Substring(0, str.IndexOf('.'));                                                        // Haza akarok menni....
                         if (str.Contains(']')) str = str.Substring(0, str.IndexOf(']'));                                                        // egy sorban két hivatkozás!
                         if (str.Split('|').Count() > 1) str = str.Split('|')[1].Replace("[[", "").Replace("]]", "").Replace("*", "").Trim();    // Van pipe-al rövid név megadva? Ha igen, akkor az kell.
                         else str = str.Replace("[[", "").Replace("]]", "").Replace("*", "").Trim();                                             // Kivesszük a dupla szögletes szárójeleket
 
-                        if (!(manufacturers.Contains(str, StringComparer.OrdinalIgnoreCase))) manufacturers.Add(str);
+                        if (!(manufacturers.Keys.Contains(str, StringComparer.OrdinalIgnoreCase))) manufacturers.Add(str, new Manufacturer());
                     }
                 }
-                foreach (string s in manufacturers)
-                    Console.WriteLine(s);
-
-                Console.WriteLine("Result end.");
-
-
-                //foreach (string s in responseJson.query.pages[0].revisions[0].slots.main.content.Split().Where(x => x.StartsWith("[[") && x.EndsWith("]]")).Select(x => x.Replace("[[", string.Empty).Replace("]]", string.Empty)).ToList())
-                //foreach (string s in responseJson.query.pages[0].revisions[0].slots.main.content.Split().Where(x => x.StartsWith("[[") && x.EndsWith("]]")).ToList())
-                //foreach (string s in System.Text.RegularExpressions.Regex.Match(responseJson.query.pages[0].revisions[0].slots.main.content, ".*?\\.Parameters\\[\"(.*?)\"]").Groups)
-                //    Console.WriteLine(s);
-
-
-                //Console.ReadLine();
+                bool foundHomepage;
+                foreach (KeyValuePair<string, Manufacturer> kvp in manufacturers)
+                {
+                    Console.Write(kvp.Key + ": ");
+                    responseJson = GetWikiPage("https://en.wikipedia.org/w/api.php?format=json&action=query&prop=revisions&titles=%name%&rvslots=*&rvprop=content&formatversion=2".Replace("%name%", kvp.Key));
+                    if (responseJson.query.pages[0].revisions == null) { Console.WriteLine(">>> Wiki page not found!<<<"); continue; }
+                    lines = responseJson.query.pages[0].revisions[0].slots.main.content.Split("\n");
+                    foundHomepage = false; string s2 = "";
+                    foreach (string s in lines)
+                    {
+                        if ((s.StartsWith("|")) && ((s.Contains("homepage")) || (s.Contains("website"))) && (s.Contains("http")))
+                        {
+                            foundHomepage = true;
+                            if (s.IndexOf("homepage") > 0)
+                            {
+                                s2 = s.Remove(0, s.IndexOf("homepage=") + 9);
+                                //s2 = s2.Remove(0, s.IndexOf("http") - 2);
+                                if (s2.Contains(" ")) s2 = s2.Remove(s2.IndexOf(" "), s2.Length - s2.IndexOf(" "));
+                            }
+                            if (s.IndexOf("website") > 0)
+                            {
+                                s2 = s.Remove(0, s.IndexOf("website=") + 8);
+                                //s2 = s2.Remove(0, s.IndexOf("http") - 2);
+                                if (s2.Contains(" ")) s2 = s2.Remove(s2.IndexOf(" "), s2.Length - s2.IndexOf(" "));
+                            }
+                            Console.WriteLine(s2);
+                        }
+                    }
+                    if (!foundHomepage) Console.WriteLine(">>> No homepage/website tag! <<<");
+                }
+                //    Console.WriteLine(kvp.Key);
+                Console.WriteLine("Done.");
             }
 
         }
 
-       
+        public RootObject GetWikiPage(string link)
+        {
+            var client = new WebClient();
+            var response = client.DownloadString(link);
+
+            RootObject responseJson = JsonConvert.DeserializeObject<RootObject>(response);
+            return responseJson;
+        }
     }
 }
