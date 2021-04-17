@@ -12,15 +12,8 @@ namespace ShopAPI
 {
     public class Manufacturer
     {
-        //public string name { get; set; }
         public string wikiLink { get; set; }
         public string website { get; set; }
-
-        //public Manufacturer(string wikiLink, string webStite)
-        //{
-        //    this.wikiLink = wikiLink;
-        //    this.website = website;
-        //}
     }
 
     public class pageval
@@ -76,10 +69,11 @@ namespace ShopAPI
             using (WebClient wc = new WebClient())
             {
                 Console.WriteLine("Getting manufacturers list...");
+                DateTime start = DateTime.Now;
                 RootObject responseJson = GetWikiPage("https://en.wikipedia.org/w/api.php?format=json&action=query&prop=revisions&titles=List_of_computer_hardware_manufacturers&rvslots=*&rvprop=content&formatversion=2");
                 List<string> manufacturerList = new List<string>();
                 string[] lines = responseJson.query.pages[0].revisions[0].slots.main.content.Split("\n");
-                string str;
+                string str, str2 = ""; string wikilink;
                 foreach (string s in lines)
                 {
                     if (s.StartsWith("==See also")) break;                                                                                      // Lap alja a linkekkel már nem kell
@@ -93,44 +87,71 @@ namespace ShopAPI
                         if (str.Contains('{')) str = str.Substring(0, str.IndexOf('{'));                                                        // Van még csapda?
                         if (str.Contains(',')) str = str.Substring(0, str.IndexOf(','));                                                        // Ez most valami vicc!
                         if (str.Contains(']')) str = str.Substring(0, str.IndexOf(']'));                                                        // egy sorban két hivatkozás!
-                        if (str.Split('|').Count() > 1) str = str.Split('|')[1].Replace("[[", "").Replace("]]", "").Replace("*", "").Trim();    // Van pipe-al rövid név megadva? Ha igen, akkor az kell.
-                        else str = str.Replace("[[", "").Replace("]]", "").Replace("*", "").Trim();                                             // Kivesszük a dupla szögletes szárójeleket
+                        if (!str.Contains("Inc.")) str = str.Replace("Inc", "Inc.");
+                        if (str.Split('|').Count() > 1)                                                                                         // Van pipe-al rövid név megadva? Ha igen, a második a cégnév, első a wiki link
+                        {
+                            str2 = str.Split('|')[1].Replace("[[", "").Replace("]]", "").Replace("*", "").Trim();
+                            wikilink = str.Split('|')[0].Replace("[[", "").Replace("]]", "").Replace("*", "").Trim().Replace(" ", "_");
+                        }
+                        else
+                        {
+                            str2 = str.Replace("[[", "").Replace("]]", "").Replace("*", "").Trim();                                             // Kivesszük a dupla szögletes szárójeleket
+                            wikilink = str2;
+                        }
 
-                        if (!(manufacturers.Keys.Contains(str, StringComparer.OrdinalIgnoreCase))) manufacturers.Add(str, new Manufacturer());
+                        if (!(manufacturers.Keys.Contains(str2, StringComparer.OrdinalIgnoreCase))) { manufacturers.Add(str2, new Manufacturer()); manufacturers[str2].wikiLink = wikilink; }
+                        //else manufacturers[str2].wikiLink = wikilink;
                     }
                 }
                 bool foundHomepage;
+                int good = 0, badformat = 0, repaired = 0, total; bool bad = false;
+                total = manufacturers.Count();
                 foreach (KeyValuePair<string, Manufacturer> kvp in manufacturers)
                 {
-                    Console.Write(kvp.Key + ": ");
-                    responseJson = GetWikiPage("https://en.wikipedia.org/w/api.php?format=json&action=query&prop=revisions&titles=%name%&rvslots=*&rvprop=content&formatversion=2".Replace("%name%", kvp.Key));
-                    if (responseJson.query.pages[0].revisions == null) { Console.WriteLine(">>> Wiki page not found!<<<"); continue; }
+                    //Console.Write(kvp.Key + ": ");
+                    responseJson = GetWikiPage("https://en.wikipedia.org/w/api.php?format=json&action=query&prop=revisions&titles=%name%&rvslots=*&rvprop=content&formatversion=2".Replace("%name%", kvp.Value.wikiLink));
+                    if (responseJson.query != null)
+                    { if (responseJson.query.pages[0].revisions == null) { Console.WriteLine(kvp.Key + ": >>> Wiki page not found!<<<"); continue; } }
+                    else
+                    {
+                        Console.WriteLine(kvp.Key + ">>> Query is empty.");
+                        continue;
+                    }
                     lines = responseJson.query.pages[0].revisions[0].slots.main.content.Split("\n");
-                    foundHomepage = false; string s2 = "";
+                    foundHomepage = false; string s2 = "", s1 = "";
                     foreach (string s in lines)
                     {
-                        if ((s.StartsWith("|")) && ((s.Contains("homepage")) || (s.Contains("website"))) && (s.Contains("http")))
+                        if ((s.StartsWith("|")) && ((s.Contains("homepage")) || (s.Contains("website"))))
                         {
                             foundHomepage = true;
-                            if (s.IndexOf("homepage") > 0)
+                            s1 = s;
+                            if (!(s1.Contains("http")) && !(s1.Contains("www")))
                             {
-                                s2 = s.Remove(0, s.IndexOf("homepage=") + 9);
-                                //s2 = s2.Remove(0, s.IndexOf("http") - 2);
-                                if (s2.Contains(" ")) s2 = s2.Remove(s2.IndexOf(" "), s2.Length - s2.IndexOf(" "));
+                                s1 = s1.Replace("{{url|", " http://").Replace("{{Url|", " http://").Replace("{{URL|", " http://");
+                                Console.WriteLine(kvp.Key + ": >>> Bad homepage format: " + s + ". Trying to repair:" + s1 + " <<<");
+                                badformat++; bad = true;
+                                if (!s1.Contains("http"))
+                                    break;
                             }
-                            if (s.IndexOf("website") > 0)
-                            {
-                                s2 = s.Remove(0, s.IndexOf("website=") + 8);
-                                //s2 = s2.Remove(0, s.IndexOf("http") - 2);
-                                if (s2.Contains(" ")) s2 = s2.Remove(s2.IndexOf(" "), s2.Length - s2.IndexOf(" "));
-                            }
-                            Console.WriteLine(s2);
+                            //good++;
+                            var links = s1.Replace("|", "| ").Replace("[", "[ ").Split("\t\n ".ToCharArray(), StringSplitOptions.RemoveEmptyEntries).Where(s => s.StartsWith("http://") || s.StartsWith("www.") || s.StartsWith("https://"));
+                            if (links.Count() > 0) 
+                                s2 = links.First().Replace("]", "").Replace("}", "").Trim();
+                            if (s2.Length > 0)
+                                if (manufacturers[kvp.Key].website != s2)
+                                {
+                                    Console.WriteLine(kvp.Key + ": " + s2);
+                                    manufacturers[kvp.Key].website = s2;
+                                    good++;
+                                }
+                            if (bad) { bad = false; repaired++; }
                         }
+                        //if (foundHomepage) break;
                     }
-                    if (!foundHomepage) Console.WriteLine(">>> No homepage/website tag! <<<");
+                    if (!foundHomepage) Console.WriteLine(kvp.Key + ": >>> No homepage/website tag! <<<");
                 }
                 //    Console.WriteLine(kvp.Key);
-                Console.WriteLine("Done.");
+                Console.WriteLine("Done. " + good + "/" + total + " links found (" + badformat + " with bad format, " + repaired + " repaired). Running time: " + Convert.ToInt32((DateTime.Now - start).TotalSeconds) + "s.");
             }
 
         }
@@ -139,8 +160,8 @@ namespace ShopAPI
         {
             var client = new WebClient();
             var response = client.DownloadString(link);
-
-            RootObject responseJson = JsonConvert.DeserializeObject<RootObject>(response);
+            RootObject responseJson = new RootObject();
+            try { responseJson = JsonConvert.DeserializeObject<RootObject>(response); } catch { }
             return responseJson;
         }
     }
