@@ -14,7 +14,8 @@ namespace ShopAPI
 
         static void Main(string[] args)
         {
-            //SQL.MakeConnection();
+            Config.ReadConfig();
+            SQL.MakeConnection();
             WikiAPI wa = new WikiAPI();
             wa.GetManufacturers();
         }

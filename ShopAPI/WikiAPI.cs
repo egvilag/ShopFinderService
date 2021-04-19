@@ -7,6 +7,7 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using Newtonsoft.Json;
+using HtmlAgilityPack;
 
 namespace ShopAPI
 {
@@ -60,9 +61,16 @@ namespace ShopAPI
         public Query query { get; set; }
     }
 
+    public class CpuProductLine
+    {
+        public string manufacturer { get; set; }
+        public string line { get; set; }
+    }
+
     class WikiAPI
     {
         public Dictionary<string, Manufacturer> manufacturers = new Dictionary<string, Manufacturer>();
+        public List<CpuProductLine> cpu_prod_lines = new List<CpuProductLine>();
 
         public void GetManufacturers()
         {
@@ -99,59 +107,83 @@ namespace ShopAPI
                             wikilink = str2;
                         }
 
-                        if (!(manufacturers.Keys.Contains(str2, StringComparer.OrdinalIgnoreCase))) { manufacturers.Add(str2, new Manufacturer()); manufacturers[str2].wikiLink = wikilink; }
+                        if (!(manufacturers.Keys.Contains(str2, StringComparer.OrdinalIgnoreCase))) 
+                        { 
+                            manufacturers.Add(str2, new Manufacturer()); manufacturers[str2].wikiLink = wikilink;
+                            Console.WriteLine(str2);
+                        }
                         //else manufacturers[str2].wikiLink = wikilink;
                     }
                 }
-                bool foundHomepage;
-                int good = 0, badformat = 0, repaired = 0, total; bool bad = false;
-                total = manufacturers.Count();
-                foreach (KeyValuePair<string, Manufacturer> kvp in manufacturers)
+                Console.WriteLine("Done.");
+                string nodePath; 
+                bool runX = true, runY; 
+                int x = 2, y;
+                while (runX)
                 {
-                    //Console.Write(kvp.Key + ": ");
-                    responseJson = GetWikiPage("https://en.wikipedia.org/w/api.php?format=json&action=query&prop=revisions&titles=%name%&rvslots=*&rvprop=content&formatversion=2".Replace("%name%", kvp.Value.wikiLink));
-                    if (responseJson.query != null)
-                    { if (responseJson.query.pages[0].revisions == null) { Console.WriteLine(kvp.Key + ": >>> Wiki page not found!<<<"); continue; } }
-                    else
+                    y = 1;
+                    runY = true;
+                    while (runY)
                     {
-                        Console.WriteLine(kvp.Key + ">>> Query is empty.");
-                        continue;
-                    }
-                    lines = responseJson.query.pages[0].revisions[0].slots.main.content.Split("\n");
-                    foundHomepage = false; string s2 = "", s1 = "";
-                    foreach (string s in lines)
-                    {
-                        if ((s.StartsWith("|")) && ((s.Contains("homepage")) || (s.Contains("website"))))
+                        nodePath = @"/html/body/main/div[2]/div[1]/div[1]/div/div/div[%x%]/div[2]/div/div[%y%]/div/a";
+                        if (!FetchDatasheets(@"https://www.intel.com/content/www/us/en/products/details/processors.html", nodePath.Replace("%x%", x.ToString()).Replace("%y%", y.ToString())))
                         {
-                            foundHomepage = true;
-                            s1 = s;
-                            if (!(s1.Contains("http")) && !(s1.Contains("www")))
-                            {
-                                s1 = s1.Replace("{{url|", " http://").Replace("{{Url|", " http://").Replace("{{URL|", " http://");
-                                Console.WriteLine(kvp.Key + ": >>> Bad homepage format: " + s + ". Trying to repair:" + s1 + " <<<");
-                                badformat++; bad = true;
-                                if (!s1.Contains("http"))
-                                    break;
-                            }
-                            //good++;
-                            var links = s1.Replace("|", "| ").Replace("[", "[ ").Split("\t\n ".ToCharArray(), StringSplitOptions.RemoveEmptyEntries).Where(s => s.StartsWith("http://") || s.StartsWith("www.") || s.StartsWith("https://"));
-                            if (links.Count() > 0) 
-                                s2 = links.First().Replace("]", "").Replace("}", "").Trim();
-                            if (s2.Length > 0)
-                                if (manufacturers[kvp.Key].website != s2)
-                                {
-                                    Console.WriteLine(kvp.Key + ": " + s2);
-                                    manufacturers[kvp.Key].website = s2;
-                                    good++;
-                                }
-                            if (bad) { bad = false; repaired++; }
+                            runY = false;
+                            if (y == 1) runX = false;
                         }
-                        //if (foundHomepage) break;
+                        else y++;
                     }
-                    if (!foundHomepage) Console.WriteLine(kvp.Key + ": >>> No homepage/website tag! <<<");
+                    x++;
                 }
-                //    Console.WriteLine(kvp.Key);
-                Console.WriteLine("Done. " + good + "/" + total + " links found (" + badformat + " with bad format, " + repaired + " repaired). Running time: " + Convert.ToInt32((DateTime.Now - start).TotalSeconds) + "s.");
+            //    bool foundHomepage;
+            //    int good = 0, badformat = 0, repaired = 0, total; bool bad = false;
+            //    total = manufacturers.Count();
+            //    foreach (KeyValuePair<string, Manufacturer> kvp in manufacturers)
+            //    {
+            //        //Console.Write(kvp.Key + ": ");
+            //        responseJson = GetWikiPage("https://en.wikipedia.org/w/api.php?format=json&action=query&prop=revisions&titles=%name%&rvslots=*&rvprop=content&formatversion=2".Replace("%name%", kvp.Value.wikiLink));
+            //        if (responseJson.query != null)
+            //        { if (responseJson.query.pages[0].revisions == null) { Console.WriteLine(kvp.Key + ": >>> Wiki page not found!<<<"); continue; } }
+            //        else
+            //        {
+            //            Console.WriteLine(kvp.Key + ">>> Query is empty.");
+            //            continue;
+            //        }
+            //        lines = responseJson.query.pages[0].revisions[0].slots.main.content.Split("\n");
+            //        foundHomepage = false; string s2 = "", s1 = "";
+            //        foreach (string s in lines)
+            //        {
+            //            if ((s.StartsWith("|")) && ((s.Contains("homepage")) || (s.Contains("website"))))
+            //            {
+            //                foundHomepage = true;
+            //                s1 = s;
+            //                if (!(s1.Contains("http")) && !(s1.Contains("www")))
+            //                {
+            //                    s1 = s1.Replace("{{url|", " http://").Replace("{{Url|", " http://").Replace("{{URL|", " http://");
+            //                    Console.WriteLine(kvp.Key + ": >>> Bad homepage format: " + s + ". Trying to repair:" + s1 + " <<<");
+            //                    badformat++; bad = true;
+            //                    if (!s1.Contains("http"))
+            //                        break;
+            //                }
+            //                //good++;
+            //                var links = s1.Replace("|", "| ").Replace("[", "[ ").Split("\t\n ".ToCharArray(), StringSplitOptions.RemoveEmptyEntries).Where(s => s.StartsWith("http://") || s.StartsWith("www.") || s.StartsWith("https://"));
+            //                if (links.Count() > 0) 
+            //                    s2 = links.First().Replace("]", "").Replace("}", "").Trim();
+            //                if (s2.Length > 0)
+            //                    if (manufacturers[kvp.Key].website != s2)
+            //                    {
+            //                        Console.WriteLine(kvp.Key + ": " + s2);
+            //                        manufacturers[kvp.Key].website = s2;
+            //                        good++;
+            //                    }
+            //                if (bad) { bad = false; repaired++; }
+            //            }
+            //            //if (foundHomepage) break;
+            //        }
+            //        if (!foundHomepage) Console.WriteLine(kvp.Key + ": >>> No homepage/website tag! <<<");
+            //    }
+            //    //    Console.WriteLine(kvp.Key);
+            //    Console.WriteLine("Done. " + good + "/" + total + " links found (" + badformat + " with bad format, " + repaired + " repaired). Running time: " + Convert.ToInt32((DateTime.Now - start).TotalSeconds) + "s.");
             }
 
         }
@@ -163,6 +195,20 @@ namespace ShopAPI
             RootObject responseJson = new RootObject();
             try { responseJson = JsonConvert.DeserializeObject<RootObject>(response); } catch { }
             return responseJson;
+        }
+
+        private bool FetchDatasheets(string link, string nodePath)
+        {
+            HtmlWeb web = new HtmlWeb();
+            var htmlDoc = web.Load(link);
+            var node = htmlDoc.DocumentNode.SelectSingleNode(nodePath);
+            //Console.WriteLine(node.Name + " -> " + node.InnerText);
+            if (node != null)
+            {
+                Console.WriteLine(node.Name + " -> " + node.Attributes["href"].Value);
+                return true;
+            }
+            return false;
         }
     }
 }
