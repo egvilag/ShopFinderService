@@ -30,17 +30,19 @@ namespace ShopAPI
                 //Log.WriteLog("Nincs megadva vagy hibás az adatbázis kapcsolat konfigurációja!", true);
                 Environment.Exit(0);
             }
-            Console.WriteLine("Adatbázis kapcsolat tesztelése...");
+            Console.Write("Adatbázis kapcsolat tesztelése...");
             try
             {
                 myConn.Open();
                 myConn.Close();
+                Console.WriteLine("OK");
                 return true;
             }
             catch (Exception e)
             {
                 //Log.WriteLog("Adatbázis hiba: " + e.Message, true);
                 myConn.Close();
+                Console.WriteLine("FAILED!");
                 return false;
             }
         }

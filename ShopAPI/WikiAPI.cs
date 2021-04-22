@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Net;
 using System.Net.Http;
@@ -72,6 +73,7 @@ namespace ShopAPI
         public Dictionary<string, Manufacturer> manufacturers = new Dictionary<string, Manufacturer>();
         public List<CpuProductLine> cpu_prod_lines = new List<CpuProductLine>();
 
+
         public void GetManufacturers()
         {
             using (WebClient wc = new WebClient())
@@ -115,26 +117,108 @@ namespace ShopAPI
                         //else manufacturers[str2].wikiLink = wikilink;
                     }
                 }
-                Console.WriteLine("Done.");
-                string nodePath; 
-                bool runX = true, runY; 
-                int x = 2, y;
+                //Console.WriteLine("Done.");
+                string nodePath;
+                bool runX = true, runY;
+                //int x = 2, y;
+                int x = 1, y, z = 0;
+                List<string> cpuProdLineLinks = new List<string>();
+                string link, link2;
                 while (runX)
                 {
-                    y = 1;
                     runY = true;
-                    while (runY)
+                    y = 1;
+                    nodePath = @"/html/body/main/div[1]/div[2]/section/div/div/div/div/div/div/div[9]/div/div[%x%]";
+                    link = FetchDatasheets(@"https://ark.intel.com/content/www/us/en/ark.html#@Processors", nodePath.Replace("%x%", x.ToString()), "data-panel-key");
+                    if (link == "") runX = false;
+                    else
                     {
-                        nodePath = @"/html/body/main/div[2]/div[1]/div[1]/div/div/div[%x%]/div[2]/div/div[%y%]/div/a";
-                        if (!FetchDatasheets(@"https://www.intel.com/content/www/us/en/products/details/processors.html", nodePath.Replace("%x%", x.ToString()).Replace("%y%", y.ToString())))
+                        while (runY)
                         {
-                            runY = false;
-                            if (y == 1) runX = false;
+                            switch (x)
+                            {
+                                case 1: z = 71; break;
+                                case 2: z = 56; break;
+                                case 3: z = 24; break;
+                                case 4: z = 48; break;
+                                case 5: z = 29; break;
+                                case 6: z = 16; break;
+                                case 7: z = 25; break;
+                                case 8: z = 21; break;
+                            }
+                            nodePath = "/html/body/main/div[1]/div[2]/section/div/div/div/div/div/div/div[%z%]/div/div[%y%]/span/a".Replace("%z%", z.ToString());
+                            link2 = FetchDatasheets(@"https://ark.intel.com/content/www/us/en/ark.html#@" + link, nodePath.Replace("%y%", y.ToString()), "href");
+                            if (link2 == "")
+                            {
+                                runY = false;
+                                if (y == 1) 
+                                runX = false;
+                            }
+                            else
+                            {
+                                cpuProdLineLinks.Add(@"https://ark.intel.com" + link2);
+                                //Console.WriteLine(@"https://ark.intel.com" + link2);
+                                y++;
+                            }
                         }
-                        else y++;
+
+                        //cpuProdLineLinks.Add(@"https://ark.intel.com/content/www/us/en/ark.html#@" + link);
+                        x++;
                     }
-                    x++;
                 }
+                List<string> cpuSpecLinks = new List<string>();
+                nodePath = "/html/body/main/div[2]/div[1]/div[3]/section/div/div/div/div/form/table/tbody/tr[%x%]/td[1]/a";
+                foreach (string prodLink in cpuProdLineLinks)
+                {
+                    x = 1;
+                    link = "";
+                    do
+                    {
+                        link = FetchDatasheets(prodLink, nodePath.Replace("%x%", x.ToString()), "href");
+                        if (link != "")
+                        {
+                            cpuSpecLinks.Add(@"https://ark.intel.com" + link);
+                            Console.WriteLine(@"https://ark.intel.com" + link);
+                            x++;
+                            Thread.Sleep(500);
+                        }
+                    }
+                    while (link != "");
+                }
+
+                //while (runX)
+                //{
+                //    y = 1;
+                //    runY = true;
+                //    while (runY)
+                //    {
+                //        //nodePath = @" / html/body/main/div[2]/div[1]/div[1]/div/div/div[%x%]/div[2]/div/div[%y%]/div/a";
+                //        //link = FetchDatasheets(@"https://www.intel.com/content/www/us/en/products/details/processors.html", nodePath.Replace("%x%", x.ToString()).Replace("%y%", y.ToString()), "href");
+                       
+                //        if (link == "")
+                //        {
+                //            runY = false;
+                //            if (y == 1) runX = false;
+                //        }
+                //        else
+                //        {
+                //            cpuProdLineLinks.Add(@"https://www.intel.com" + link.Replace(".html", @"/products.html"));
+                //            y++;
+                //        }
+                //    }
+                //    x++;
+                //}
+                //nodePath = @"/html/body/main/div[2]/div[2]/div[1]/div[2]/div/dm:webanalytics/div[1]/div/div[3]/div[1]/div[2]/form/table/tbody/tr[%x%]/td[2]/a";
+
+                //Ez jó:
+                //nodePath = @"/html/body/main/div[1]/div[2]/section/div/div/div/div/div/div/div[70]/div/div[%x%]/span/a";
+                //foreach (string s in cpuProdLineLinks)
+                //{
+                //    link = FetchDatasheets(s, nodePath, "href");
+                //    Console.WriteLine(link);
+                //}
+
+                Console.WriteLine("Done.");
             //    bool foundHomepage;
             //    int good = 0, badformat = 0, repaired = 0, total; bool bad = false;
             //    total = manufacturers.Count();
@@ -197,18 +281,26 @@ namespace ShopAPI
             return responseJson;
         }
 
-        private bool FetchDatasheets(string link, string nodePath)
+        private string FetchDatasheets(string link, string nodePath, string attribute)
         {
             HtmlWeb web = new HtmlWeb();
-            var htmlDoc = web.Load(link);
-            var node = htmlDoc.DocumentNode.SelectSingleNode(nodePath);
-            //Console.WriteLine(node.Name + " -> " + node.InnerText);
-            if (node != null)
+            try
             {
-                Console.WriteLine(node.Name + " -> " + node.Attributes["href"].Value);
-                return true;
+                var htmlDoc = web.Load(link);
+
+                var node = htmlDoc.DocumentNode.SelectSingleNode(nodePath);
+                
+                if (node != null)
+                {
+                    //Console.WriteLine(node.Name + " -> " + node.Attributes[attribute].Value);
+                    return node.Attributes[attribute].Value;
+                }
+                else
+                {; }
             }
-            return false;
+            catch (Exception e) 
+                { return ""; }
+            return "";
         }
     }
 }
